@@ -1,22 +1,25 @@
 package testutils
 
-import "github.com/aws/aws-lambda-go/events"
+import (
+	"github.com/aws/aws-lambda-go/events"
+)
 
 var (
-	_payload     = `{"user_uuid":"iao","operation_id":"123"}`
-	_badPayload  = `{"user_uuid":"x","operation_id":"123"}`
+	Payload    = `{"user_uuid":"iao","operation_id":"123"}`
+	BadPayload = `{"user_uuid":"x","operation_id":"123"}`
+
 	SNSMockEvent = events.SNSEvent{
 		Records: []events.SNSEventRecord{
 			{
 				EventSource: "aws:sns",
 				SNS: events.SNSEntity{
-					Message: _payload,
+					Message: Payload,
 				},
 			},
 			{
 				EventSource: "aws:sns",
 				SNS: events.SNSEntity{
-					Message: _payload,
+					Message: Payload,
 				},
 			},
 		},
@@ -25,12 +28,12 @@ var (
 		Records: []events.SQSMessage{
 			{
 				EventSource: "aws:sqs",
-				Body:        _payload,
+				Body:        Payload,
 				MessageId:   "1",
 			},
 			{
 				EventSource: "aws:sqs",
-				Body:        _payload,
+				Body:        Payload,
 				MessageId:   "2",
 			},
 		},
@@ -39,12 +42,12 @@ var (
 		Records: []events.SQSMessage{
 			{
 				EventSource: "aws:sqs",
-				Body:        _payload,
+				Body:        Payload,
 				MessageId:   "1",
 			},
 			{
 				EventSource: "aws:sqs",
-				Body:        _badPayload,
+				Body:        BadPayload,
 				MessageId:   "2",
 			},
 		},

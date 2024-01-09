@@ -11,19 +11,19 @@ import (
 	"seb7887/lambda/pkg/logger"
 )
 
-type Service interface {
+type HandlerService interface {
 	Do(ctx context.Context, in *service.Request) (*service.Response, error)
 }
 
-type Handler struct {
-	svc Service
+type Handlers struct {
+	svc HandlerService
 }
 
-func New(svc Service) *Handler {
-	return &Handler{svc: svc}
+func New(svc HandlerService) *Handlers {
+	return &Handlers{svc: svc}
 }
 
-func (h *Handler) APIEventHandler(ctx context.Context, in *service.Request) (*service.Response, error) {
+func (h *Handlers) APIEventHandler(ctx context.Context, in *service.Request) (*service.Response, error) {
 	ctx, log := logger.NewContextWithLogger(ctx)
 	log.With(zap.Any("event", in)).Info("start")
 	res, err := h.svc.Do(ctx, in)
@@ -36,7 +36,7 @@ func (h *Handler) APIEventHandler(ctx context.Context, in *service.Request) (*se
 	return res, nil
 }
 
-func (h *Handler) SNSEventHandler(ctx context.Context, evt events.SNSEvent) error {
+func (h *Handlers) SNSEventHandler(ctx context.Context, evt events.SNSEvent) error {
 	ctx, log := logger.NewContextWithLogger(ctx)
 
 	for _, record := range evt.Records {
@@ -62,7 +62,7 @@ func (h *Handler) SNSEventHandler(ctx context.Context, evt events.SNSEvent) erro
 	return nil
 }
 
-func (h *Handler) SQSEventHandler(ctx context.Context, evt events.SQSEvent) error {
+func (h *Handlers) SQSEventHandler(ctx context.Context, evt events.SQSEvent) error {
 	ctx, log := logger.NewContextWithLogger(ctx)
 
 	for _, record := range evt.Records {
@@ -86,7 +86,7 @@ func (h *Handler) SQSEventHandler(ctx context.Context, evt events.SQSEvent) erro
 	return nil
 }
 
-func (h *Handler) BatchSQSEventHandler(ctx context.Context, evt events.SQSEvent) (events.SQSEventResponse, error) {
+func (h *Handlers) BatchSQSEventHandler(ctx context.Context, evt events.SQSEvent) (events.SQSEventResponse, error) {
 	var failedMessages []events.SQSBatchItemFailure
 	ctx, log := logger.NewContextWithLogger(ctx)
 
@@ -113,7 +113,7 @@ func (h *Handler) BatchSQSEventHandler(ctx context.Context, evt events.SQSEvent)
 	return events.SQSEventResponse{BatchItemFailures: failedMessages}, nil
 }
 
-func (h *Handler) DDBEventHandler(ctx context.Context, evt events.DynamoDBEvent) error {
+func (h *Handlers) DDBEventHandler(ctx context.Context, evt events.DynamoDBEvent) error {
 	ctx, log := logger.NewContextWithLogger(ctx)
 
 	for _, record := range evt.Records {
@@ -136,7 +136,7 @@ func (h *Handler) DDBEventHandler(ctx context.Context, evt events.DynamoDBEvent)
 	return nil
 }
 
-func (h *Handler) BatchDDBEventHandler(ctx context.Context, evt events.DynamoDBEvent) (events.DynamoDBEventResponse, error) {
+func (h *Handlers) BatchDDBEventHandler(ctx context.Context, evt events.DynamoDBEvent) (events.DynamoDBEventResponse, error) {
 	var failedItems []events.DynamoDBBatchItemFailure
 	ctx, log := logger.NewContextWithLogger(ctx)
 
@@ -164,7 +164,7 @@ func (h *Handler) BatchDDBEventHandler(ctx context.Context, evt events.DynamoDBE
 	}, nil
 }
 
-func (h *Handler) unmarshalStreamImage(attr map[string]events.DynamoDBAttributeValue, out any) error {
+func (h *Handlers) unmarshalStreamImage(attr map[string]events.DynamoDBAttributeValue, out any) error {
 	attrMap := make(map[string]*dynamodb.AttributeValue)
 
 	for k, v := range attr {
@@ -180,4 +180,53 @@ func (h *Handler) unmarshalStreamImage(attr map[string]events.DynamoDBAttributeV
 	}
 
 	return dynamodbattribute.UnmarshalMap(attrMap, out)
+}
+
+func (h *Handlers) MultiEventHandler(ctx context.Context, raw json.RawMessage) (any, error) {
+	source := eventSource(raw)
+	ctx, log := logger.NewContextWithLogger(ctx)
+	log.With(zap.Any("event.source", source)).Info("event parsed")
+
+	if source == _apiEvent {
+		return h.api(ctx, raw), nil
+	}
+
+	if source == _sqsEvent {
+		return nil, h.sqs(ctx, raw)
+	}
+
+	return nil, nil
+}
+
+func (h *Handlers) api(ctx context.Context, raw json.RawMessage) *service.Response {
+	var in service.Request
+	if err := json.Unmarshal(raw, &in); err != nil {
+		return nil
+	}
+	r, err := h.svc.Do(ctx, &in)
+	if err != nil {
+		return nil
+	}
+	return r
+}
+
+func (h *Handlers) sqs(ctx context.Context, raw json.RawMessage) error {
+	var evt events.SQSEvent
+	if err := json.Unmarshal(raw, &evt); err != nil {
+		return err
+	}
+
+	for _, record := range evt.Records {
+		var in service.Request
+		if err := json.Unmarshal([]byte(record.Body), &in); err != nil {
+			return err
+		}
+
+		_, err := h.svc.Do(ctx, &in)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
