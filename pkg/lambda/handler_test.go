@@ -3,6 +3,7 @@ package lambda
 import (
 	"context"
 	"encoding/json"
+	"github.com/aws/aws-lambda-go/events"
 	"github.com/stretchr/testify/assert"
 	"seb7887/lambda/internal/service"
 	"seb7887/lambda/pkg/logger"
@@ -84,6 +85,55 @@ func TestHandler_EventHandler_Async(t *testing.T) {
 
 			tt.wantErr(t, err)
 			assert.Equal(t, nil, r)
+		})
+	}
+}
+
+func TestHandler_EventHandler_Batch(t *testing.T) {
+	var (
+		ctx, _ = logger.NewContextWithLogger(context.TODO())
+		tests  = []struct {
+			name    string
+			give    json.RawMessage
+			want    any
+			wantErr assert.ErrorAssertionFunc
+		}{
+			{
+				name: "should handle a batch SQS event",
+				give: testutils.ReadJSONFromFile(t, "../../testutils/data/sqs.json"),
+				want: events.SQSEventResponse{BatchItemFailures: []events.SQSBatchItemFailure{
+					{
+						ItemIdentifier: "MessageID_2",
+					},
+				}},
+				wantErr: assert.NoError,
+			},
+			{
+				name: "should handle a batch DynamoDB event",
+				give: testutils.ReadJSONFromFile(t, "../../testutils/data/dynamodb.json"),
+				want: events.DynamoDBEventResponse{BatchItemFailures: []events.DynamoDBBatchItemFailure{
+					{
+						ItemIdentifier: "f07f8ca4b0b26cb9c4e5e77e42f274ee",
+					},
+				}},
+				wantErr: assert.NoError,
+			},
+			{
+				name:    "should not handle an invalid event",
+				give:    testutils.ReadJSONFromFile(t, "../../testutils/data/cloudwatch.json"),
+				wantErr: assert.Error,
+			},
+		}
+	)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := NewHandler(service.New().Do)
+			h.Batch()
+			r, err := h.EventHandler(ctx, tt.give)
+
+			tt.wantErr(t, err)
+			assert.Equal(t, tt.want, r)
 		})
 	}
 }
