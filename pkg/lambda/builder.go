@@ -14,12 +14,17 @@ func NewLambdaBuilder[I, O any](fn HandlerFn[I, O]) *Builder[I, O] {
 }
 
 func (b *Builder[I, O]) WithMiddlewares(middlewares ...MiddlewareFn[I, O]) *Builder[I, O] {
-	if len(middlewares) > 0 {
-		b.middlewares = append(b.middlewares, middlewares...)
-	}
+	b.middlewares = append(b.middlewares, middlewares...)
 	return b
 }
 
 func (b *Builder[I, O]) Start() {
-	lambda.Start(NewHandler(b.fn, b.middlewares...).EventHandler)
+	h := NewHandler(b.fn, b.middlewares...)
+	lambda.Start(h.EventHandler)
+}
+
+func (b *Builder[I, O]) StartBatch() {
+	h := NewHandler(b.fn, b.middlewares...)
+	h.Batch()
+	lambda.Start(h.EventHandler)
 }
